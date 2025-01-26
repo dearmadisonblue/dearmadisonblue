@@ -4,37 +4,38 @@ import dataclasses
 from typing import Optional
 
 @dataclasses.dataclass(frozen=True)
-class Block:
+class Value:
   @property
-  def name(self) -> 'Block':
+  def name(self) -> 'Value':
     raise NoSuchProperty('name', self)
 
   @property
-  def body(self) -> 'Block':
+  def body(self) -> 'Value':
     raise NoSuchProperty('body', self)
 
   @property
-  def fst(self) -> 'Block':
+  def fst(self) -> 'Value':
     raise NoSuchProperty('fst', self)
 
   @property
-  def snd(self) -> 'Block':
+  def snd(self) -> 'Value':
     raise NoSuchProperty('snd', self)
 
   @property
-  def enum(self) -> 'Block':
+  def enum(self) -> 'Value':
     raise NoSuchProperty('enum', self)
 
   @property
-  def children(self) -> 'Block':
+  def children(self) -> 'Value':
     raise NoSuchProperty('children', self)
 
 @dataclasses.dataclass(frozen=True)
-class Id(Block):
-  pass
+class Id(Value):
+  def __str__(self):
+    return ''
 
 @dataclasses.dataclass(frozen=True)
-class Constant(Block):
+class Constant(Value):
   _name: str
 
   @property
@@ -45,7 +46,7 @@ class Constant(Block):
     return self._name
 
 @dataclasses.dataclass(frozen=True)
-class Variable(Block):
+class Variable(Value):
   _name: str
 
   @property
@@ -56,11 +57,11 @@ class Variable(Block):
     return self._name
 
 @dataclasses.dataclass(frozen=True)
-class Catenate(Block):
-  _children: list[Block]
+class Catenate(Value):
+  _children: list[Value]
 
   @property
-  def children(self) -> list[Block]:
+  def children(self) -> list[Value]:
     return self._children
 
   def __str__(self) -> str:
@@ -68,106 +69,115 @@ class Catenate(Block):
     return ' '.join(children)
 
 @dataclasses.dataclass(frozen=True)
-class Quote(Block):
-  _body: Block
+class Quote(Value):
+  _body: Value
 
   @property
-  def body(self) -> Block:
+  def body(self) -> Value:
     return self._body
 
   def __str__(self) -> str:
     return f'[{self._body}]'
 
 @dataclasses.dataclass(frozen=True)
-class Inl(Block):
-  _enum: Block
+class Inl(Value):
+  _enum: Value
 
   @property
-  def enum(self) -> Block:
+  def enum(self) -> Value:
     return self._enum
 
   @property
-  def body(self) -> Block:
+  def body(self) -> Value:
     return RunInl(self._enum)
 
   def __str__(self) -> str:
     return f'{self._enum} J'
 
 @dataclasses.dataclass(frozen=True)
-class Inr(Block):
-  _enum: Block
+class Inr(Value):
+  _enum: Value
 
   @property
-  def enum(self) -> Block:
+  def enum(self) -> Value:
     return self._enum
 
   @property
-  def body(self) -> Block:
+  def body(self) -> Value:
     return RunInr(self._enum)
 
   def __str__(self) -> str:
     return f'{self._enum} K'
 
 @dataclasses.dataclass(frozen=True)
-class Pair(Block):
-  _fst: Block
-  _snd: Block
+class Unit(Value):
+  @property
+  def body(self) -> Value:
+    return Id()
+
+  def __str__(self) -> str:
+    return f'[]'
+
+@dataclasses.dataclass(frozen=True)
+class Pair(Value):
+  _fst: Value
+  _snd: Value
 
   @property
-  def fst(self) -> Block:
+  def fst(self) -> Value:
     return self._fst
 
   @property
-  def snd(self) -> Block:
+  def snd(self) -> Value:
     return self._snd
 
   @property
-  def body(self) -> Block:
+  def body(self) -> Value:
     return RunPair(self._fst, self._snd)
 
   def __str__(self) -> str:
     return f'{self._fst} {self._snd} L'
 
 @dataclasses.dataclass(frozen=True)
-class RunInl(Block):
-  _enum: Block
+class RunInl(Value):
+  _enum: Value
 
   @property
-  def enum(self) -> Block:
+  def enum(self) -> Value:
     return self._enum
 
   def __str__(self) -> str:
     return f'{self._enum} J H'
 
 @dataclasses.dataclass(frozen=True)
-class RunInr(Block):
-  _enum: Block
+class RunInr(Value):
+  _enum: Value
 
   @property
-  def enum(self) -> Block:
+  def enum(self) -> Value:
     return self._enum
 
   def __str__(self) -> str:
     return f'{self._enum} K H'
 
 @dataclasses.dataclass(frozen=True)
-class RunPair(Block):
-  _fst: Block
-  _snd: Block
+class RunPair(Value):
+  _fst: Value
+  _snd: Value
 
   @property
-  def fst(self) -> Block:
+  def fst(self) -> Value:
     return self._fst
 
   @property
-  def snd(self) -> Block:
+  def snd(self) -> Value:
     return self._snd
 
   def __str__(self) -> str:
     return f'{self._fst} {self._snd} L H'
 
 @dataclasses.dataclass(frozen=True)
-class String(Block):
+class String(Value):
   _value: str
 
   @property
@@ -178,7 +188,7 @@ class String(Block):
     return f'"{self._value}"'
 
 @dataclasses.dataclass(frozen=True)
-class Prompt(Block):
+class Prompt(Value):
   _value: str
 
   @property
@@ -203,7 +213,7 @@ class NoMoreCode(Panic):
 @dataclasses.dataclass
 class NoSuchProperty(Panic):
   property: str
-  block: Block
+  value: Value
 
 @dataclasses.dataclass
 class Unreadable(Panic):
@@ -213,27 +223,35 @@ class Unreadable(Panic):
 @dataclasses.dataclass
 class Unexpected(Panic):
   expected: str
-  actual: Block
+  actual: Value
 
 @dataclasses.dataclass
 class Unknown(Panic):
-  block: Block
+  value: Value
   state: 'State'
 
 def _is_separator(char: str) -> bool:
   return char.isspace() or char in ['[', ']']
 
 class Interpreter:
+  dictionary: dict[str, Value]
+
   def __init__(self):
-    pass
-  
+    self.dictionary = {}
+
+  def __getitem__(self, key):
+    return self.dictionary[key]
+
+  def __setitem__(self, key, value):
+    self.dictionary[key] = value
+
   @property
-  def id(self) -> Block:
+  def id(self) -> Value:
     return Id()
 
   @property
-  def unit(self) -> Block:
-    return self.quote(self.id)
+  def unit(self) -> Value:
+    return Unit()
 
   def constant(self, name: str) -> Variable:
     return Constant(name)
@@ -241,16 +259,16 @@ class Interpreter:
   def variable(self, name: str) -> Variable:
     return Variable(name)
 
-  def quote(self, block: Block) -> Quote:
-    return Quote(block)
+  def quote(self, value: Value) -> Quote:
+    return Quote(value)
 
-  def pair(self, fst: Block, snd: Block) -> Pair:
+  def pair(self, fst: Value, snd: Value) -> Pair:
     return Pair(fst, snd)
 
-  def inl(self, body: Block) -> Inl:
+  def inl(self, body: Value) -> Inl:
     return Inl(body)
 
-  def inr(self, body: Block) -> Inr:
+  def inr(self, body: Value) -> Inr:
     return Inr(body)
 
   def string(self, value: str) -> String:
@@ -259,23 +277,24 @@ class Interpreter:
   def prompt(self, value: str) -> Prompt:
     return Prompt(value)
 
-  def catenate(self, *blocks: list[Block]) -> Catenate:
+  def catenate(self, *values: list[Value]) -> Catenate:
     buf = []
-    for block in blocks:
-      match block:
+    for value in values:
+      match value:
         case Id():
           pass
         case Catenate(body):
           buf.extend(body)
         case _:
-          buf.append(block)
+          buf.append(value)
+    if len(buf) == 0:
+      return Id()
     return Catenate(buf)
 
   def read(
     self,
     src: str,
-    parse_strings: bool = True,
-  ) -> Block:
+  ) -> Value:
     build = []
     stack = []
     index = 0
@@ -292,9 +311,14 @@ class Interpreter:
       elif src[index] == ']':
         if len(stack) == 0:
           raise Unreadable(f'Unbalanced brackets', src)
-        block = self.quote(self.catenate(*build))
+        body = self.catenate(*build)
+        match body:
+          case Id():
+            value = self.unit
+          case _:
+            value = self.quote(body)
         build = stack.pop()
-        build.append(block)
+        build.append(value)
         index += 1
       elif src[index] == '"':
         index += 1
@@ -304,8 +328,8 @@ class Interpreter:
         if index >= len(src):
           raise Unreadable(f'Unbalanced quotes', src)
         value = src[start:index]
-        block = self.string(value)
-        build.append(block)
+        value = self.string(value)
+        build.append(value)
         index += 1
       elif src[index] == '{':
         index += 1
@@ -315,8 +339,8 @@ class Interpreter:
         if index >= len(src):
           raise Unreadable(f'Unbalanced braces', src)
         value = src[start:index]
-        block = self.prompt(value)
-        build.append(block)
+        value = self.prompt(value)
+        build.append(value)
         index += 1
       elif src[index].isalpha() and src[index].isupper():
         start = index
@@ -324,29 +348,29 @@ class Interpreter:
         while index < len(src) and not _is_separator(src[index]):
           index += 1
         name = src[start:index]
-        if not re.match(r'^[A-Z]$', name):
+        if not re.match(r'^[A-Z][A-Za-z0-9_-]*$', name):
           raise Unreadable(f'Unknown symbol: {name}', src)
-        block = self.constant(name)
-        build.append(block)
+        value = self.constant(name)
+        build.append(value)
       else:
         start = index
         index += 1
         while index < len(src) and not _is_separator(src[index]):
           index += 1
         name = src[start:index]
-        # TODO: Is it a good idea to accept arbitrary variable names
-        # like this?
-        block = self.variable(name)
-        build.append(block)
+        if not re.match(r'^[a-z][a-zA-Z0-9_-]*$', name):
+          raise Unreadable(f'Unknown symbol: {name}', src)
+        value = self.variable(name)
+        build.append(value)
     if len(stack) > 0:
       raise Unreadable(f'Unbalanced brackets', src)
     return self.catenate(*build)
 
-  def eval(
+  def rewrite(
     self,
-    init: str | Block,
+    init: str | Value,
     gas: int = 1_000_000,
-  ) -> str | Block:
+  ) -> str | Value:
     if isinstance(init, str):
       init = self.read(init)
     state = State(init)
@@ -357,10 +381,14 @@ class Interpreter:
         case Catenate(children):
           state.pop_code()
           state.push_code(children)
-        case Variable(_):
-          state.thunk()
-          gas = 0
-          continue
+        case Variable(name):
+          if not name in self.dictionary:
+            state.thunk()
+            gas = 0
+            continue
+          binding = self.dictionary[name]
+          state.pop_code()
+          state.push_code(binding)
         case Quote(_):
           state.pop_code()
           state.push_data(hand)
@@ -377,11 +405,11 @@ class Interpreter:
           state.pop_code()
           state.push_data(hand)
         case Prompt(_):
-          # TODO: Prompts
+          # TODO: What do prompts condition on?
           state.thunk()
           gas = 0
           continue
-        case RunInl(block):
+        case RunInl(value):
           try:
             inl = state.get_data(1).body
             inr = state.get_data(0).body
@@ -392,8 +420,8 @@ class Interpreter:
           state.pop_code()
           state.pop_data(2)
           state.push_code(inl)
-          state.push_data(block)
-        case RunInr(block):
+          state.push_data(value)
+        case RunInr(value):
           try:
             inl = state.get_data(1).body
             inr = state.get_data(0).body
@@ -404,7 +432,7 @@ class Interpreter:
           state.pop_code()
           state.pop_data(2)
           state.push_code(inr)
-          state.push_data(block)
+          state.push_data(value)
         case RunPair(fst, snd):
           state.pop_code()
           state.push_data(fst)
@@ -503,20 +531,24 @@ class Interpreter:
               continue
         case _:
           raise Unknown(hand, state)
-    block = self.catenate(*state.sink, *state.data, *reversed(state.code))
-    return block
+    value = self.catenate(*state.sink, *state.data, *reversed(state.code))
+    return value
 
 class State:
-  code: list[Block]
-  data: list[Block]
-  sink: list[Block]
+  code: list[Value]
+  data: list[Value]
+  sink: list[Value]
 
-  def __init__(self, block: Block):
-    self.code = [block]
+  def __init__(self, value: Value):
+    self.code = [value]
     self.data = []
     self.sink = []
 
-  def get_data(self, index: int = 0) -> Block:
+  @property
+  def has_code(self) -> bool:
+    return len(self.code) > 0
+
+  def get_data(self, index: int = 0) -> Value:
     assert index >= 0
     if index >= len(self.data):
       raise NoMoreData(self)
@@ -528,13 +560,13 @@ class State:
       raise NoMoreData(self)
     self.data = self.data[:len(self.data)-length]
 
-  def push_data(self, block: Block | list[Block]):
-    if isinstance(block, list):
-      self.data.extend(reversed(block))
+  def push_data(self, value: Value | list[Value]):
+    if isinstance(value, list):
+      self.data.extend(reversed(value))
     else:
-      self.data.append(block)
+      self.data.append(value)
 
-  def get_code(self, index: int) -> Block:
+  def get_code(self, index: int) -> Value:
     if index >= len(self.code):
       raise NoMoreCode(self)
     return self.code[len(self.code)-1-index]
@@ -544,11 +576,11 @@ class State:
       raise NoMoreCode(self)
     self.code.pop()
 
-  def push_code(self, block: Block | list[Block]):
-    if isinstance(block, list):
-      self.code.extend(reversed(block))
+  def push_code(self, value: Value | list[Value]):
+    if isinstance(value, list):
+      self.code.extend(reversed(value))
     else:
-      self.code.append(block)
+      self.code.append(value)
 
   def thunk(self):
     self.sink.extend(self.data)

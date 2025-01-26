@@ -23,6 +23,6 @@ def ctx():
   ],
 )
 def test_eval(ctx, source, expected):
-  block = ctx.read(source)
-  actual = str(ctx.eval(block))
-  assert actual == expected
+  source = ctx.read(source)
+  actual = ctx.rewrite(source)
+  assert str(actual) == expected
