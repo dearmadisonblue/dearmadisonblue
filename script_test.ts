@@ -10,9 +10,9 @@ const testCases = [
   { source: '[foo] [bar] F', expected: '[foo bar]' },
   { source: '[foo] G', expected: '[[foo]]' },
   { source: '[foo] H', expected: 'foo' },
-  { source: '[foo] [bar] [value] J H', expected: '[value] foo' },
-  { source: '[foo] [bar] [value] K H', expected: '[value] bar' },
-  { source: '[foo] [bar] L H', expected: '[foo] [bar]' },
+  { source: '[inl] [inr] [value] J H', expected: '[value] inl' },
+  { source: '[inl] [inr] [value] K H', expected: '[value] inr' },
+  { source: '[fst] [snd] L H', expected: '[fst] [snd]' },
   { source: '"Hello" "world" D', expected: '"world" "Hello"' },
   { source: '{ Hello, world. }', expected: '{ Hello, world. }' },
 ];
@@ -21,7 +21,7 @@ testCases.forEach(({ source, expected }, index) => {
   Deno.test(`Test case #${index + 1}: ${source} → ${expected}`, () => {
     const interpreter = new script.Interpreter();
     const parsed = interpreter.read(source);
-    const result = interpreter.rewrite(parsed);
-    assertEquals(result.toString(), expected);
+    const actual = interpreter.rewrite(parsed);
+    assertEquals(actual.toString(), expected);
   });
 });
