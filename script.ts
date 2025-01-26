@@ -5,6 +5,14 @@ abstract class Value {
     throw new NoSuchProperty("name", this);
   }
 
+  get text(): string {
+    throw new NoSuchProperty("string", this);
+  }
+
+  get prompt(): string {
+    throw new NoSuchProperty("prompt", this);
+  }
+
   get body(): Value {
     throw new NoSuchProperty("body", this);
   }
@@ -81,7 +89,7 @@ class Catenate extends Value {
   }
 
   toString(): string {
-    return this._children.map(child => child.toString()).join(" ");
+    return this._children.map(child => `${child}`).join(" ");
   }
 }
 
@@ -246,7 +254,7 @@ class Text extends Value {
     this._value = value;
   }
 
-  get string(): string {
+  get text(): string {
     return this._value;
   }
 
@@ -326,11 +334,11 @@ export class Interpreter {
     this.dictionary = new Map();
   }
 
-  get id(): Value {
+  get id(): Id {
     return new Id();
   }
 
-  get unit(): Value {
+  get unit(): Unit {
     return new Unit();
   }
 
@@ -358,7 +366,7 @@ export class Interpreter {
     return new Inr(body);
   }
 
-  string(value: string): Text {
+  text(value: string): Text {
     return new Text(value);
   }
 
@@ -417,7 +425,7 @@ export class Interpreter {
         if (index >= src.length) {
           throw new Unreadable(src, "Unbalanced quotes");
         }
-        build.push(this.string(src.slice(start, index)));
+        build.push(this.text(src.slice(start, index)));
         index++;
       } else if (src[index] === "{") {
         index++;
