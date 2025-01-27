@@ -1,41 +1,152 @@
 // server.ts
-import { serve } from "https://deno.land/std@0.190.0/http/mod.ts";
 
-const handler = (req: Request): Response => {
-  if (req.headers.get("upgrade") !== "websocket") {
-    return new Response("Not a WebSocket request", { status: 400 });
+import {
+  serve,
+} from "https://deno.land/std@0.190.0/http/mod.ts";
+
+interface PromiseLike {
+  resolve: (value) => void;
+  reject: (reason) => void;
+}
+
+function workerAddress() {
+  return new URL('./worker.ts', import.meta.url).href;
+}
+
+class Client {
+  // TODO: Replace these with the actual type names for Deno's web
+  // sockets and web workers.
+  socket: WebSocket;
+  worker: any;
+  readQueue: string[];
+  pendingRead: PromiseLike | null;
+  pendingEval: Map<int, PromiseLike>;
+  nextId: number = 0;
+  isSocketClosed: boolean;
+
+  constructor(socket) {
+    this.socket = socket;
+    this.worker = new Worker(workerAddress(), { type: 'module' });
+    this.readQueue = [];
+    this.pendingRead = null;
+    this.pendingEval = new Map();
+    this.isSocketClosed = false;
+    this.socket.onmessage = this.onSocketMessage.bind(this);
+    this.socket.onerror = this.onSocketError.bind(this);
+    this.socket.onclose = this.onSocketClose.bind(this);
+    this.worker.onmessage = this.onWorkerMessage.bind(this);
+    this.worker.onerror = this.onWorkerError.bind(this);
   }
 
-  const { socket, response } = Deno.upgradeWebSocket(req);
+  async read(returnType='string'): string {
+    if (this.isSocketClosed) {
+      throw new Error('WebSocket is closed');
+    }
+    if (this.readQueue.length > 0) {
+      console.log('read: returning a message from the queue');
+      return this.readQueue.shift();
+    }
+    console.log('read: no messages, returning a promise');
+    return new Promise((resolve, reject) => {
+      this.pendingRead = {
+        reject,
+        resolve: (source) => {
+          console.log(`read: resolving message with ${source}`);
+          switch (returnType) {
+            case 'string':
+              resolve(source);
+              break;
+            case 'value':
+              try {
+                let value = script.read(source);
+                console.log(`read: got the value ${value}`);
+                resolve(value);
+              } catch(error) {
+                reject(error);
+              }
+              break;
+            default:
+              break;
+          }
+        },
+      };
+    });
+  }
 
-  const worker = new Worker(new URL("./worker.ts", import.meta.url).href, {
-    type: "module",
-  });
+  async evaluate(code: string): string {
+    let id = this.nextId++;
+    return new Promise((resolve, reject) => {
+      this.pendingEval.set(id, { resolve, reject });
+      this.worker.postMessage({ id, code });
+    });
+  }
 
-  worker.onmessage = (e) => {
-    socket.send(e.data);
-  };
+  send(message: string) {
+    this.socket.send(message || '{ Okay }');
+  }
 
-  worker.onerror = (e) => {
-    socket.send(`Error: ${e.message}`);
-  };
+  close() {
+    this.socket.close();
+    this.worker.terminate();
+  }
 
-  socket.onmessage = async (event) => {
-    const sourceCode = event.data.toString();
-    worker.postMessage(sourceCode);
-  };
+  onSocketMessage(event) {
+    let code = event.data.toString();
+    if (this.pendingRead) {
+      let { resolve, reject } = this.pendingRead;
+      this.pendingRead = null;
+      resolve(code);
+    } else {
+      this.readQueue.push(code);
+    }
+  }
 
-  socket.onclose = () => {
-    worker.terminate();
-  };
+  onWorkerMessage(event) {
+    const { id, result, error } = event.data;
+    console.log(`Worker message: ${id} ${result} ${error}`);
+    if (this.pendingEval.has(id)) {
+      const { resolve, reject } = this.pendingEval.get(id);
+      this.pendingEval.delete(id);
+      error? reject(error) : resolve(result);
+    }
+  }
 
-  socket.onerror = () => {
-    worker.terminate();
-  };
+  onSocketError(error) {
+    this.worker.terminate();
+  }
 
-  return response;
-};
+  onWorkerError(error) {
+    this.socket.close();
+    this.worker.terminate();
+  }
+
+  onSocketClose() {
+    this.worker.terminate();
+  }
+}
+
+async function listen(client) {
+  console.log('Listening to a new client');
+  while (true) {
+    let source = await client.read();
+    console.log(`Got source code: ${source}`);
+    if (source.trim() in ['{Quit}','{ Quit }']) {
+      return client.close();
+    }
+    let target = await client.evaluate(source);
+    console.log(`Evaluated to ${target}`);
+    client.send(target);
+  }
+}
 
 const port = 8080;
-console.log(`WebSocket server running on ws://localhost:${port}`);
-serve(handler, { port });
+console.log(`Listening on ${port}`);
+serve((request: Request): Response => {
+  if (request.headers.get("upgrade") !== "websocket") {
+    return new Response("No", { status: 400 });
+  }
+  const { socket, response } = Deno.upgradeWebSocket(request);
+  let client = new Client(socket);
+  listen(client);
+  return response;
+}, { port });

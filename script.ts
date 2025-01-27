@@ -1,6 +1,6 @@
 // script.ts
 
-abstract class Value {
+export abstract class Value {
   get name(): string {
     throw new NoSuchProperty("name", this);
   }
@@ -36,13 +36,13 @@ abstract class Value {
   abstract toString(): string;
 }
 
-class Id extends Value {
+export class Id extends Value {
   toString(): string {
     return "";
   }
 }
 
-class Constant extends Value {
+export class Constant extends Value {
   private _name: string;
 
   constructor(name: string) {
@@ -59,7 +59,7 @@ class Constant extends Value {
   }
 }
 
-class Variable extends Value {
+export class Variable extends Value {
   private _name: string;
 
   constructor(name: string) {
@@ -76,7 +76,7 @@ class Variable extends Value {
   }
 }
 
-class Catenate extends Value {
+export class Catenate extends Value {
   private _children: Value[];
 
   constructor(children: Value[]) {
@@ -93,7 +93,7 @@ class Catenate extends Value {
   }
 }
 
-class Quote extends Value {
+export class Quote extends Value {
   private _body: Value;
 
   constructor(body: Value) {
@@ -110,7 +110,7 @@ class Quote extends Value {
   }
 }
 
-class Inl extends Value {
+export class Inl extends Value {
   private _enum: Value;
 
   constructor(enumValue: Value) {
@@ -131,7 +131,7 @@ class Inl extends Value {
   }
 }
 
-class Inr extends Value {
+export class Inr extends Value {
   private _enum: Value;
 
   constructor(enumValue: Value) {
@@ -152,7 +152,7 @@ class Inr extends Value {
   }
 }
 
-class Unit extends Value {
+export class Unit extends Value {
   get body(): Value {
     return new Id();
   }
@@ -162,7 +162,7 @@ class Unit extends Value {
   }
 }
 
-class Pair extends Value {
+export class Pair extends Value {
   private _fst: Value;
   private _snd: Value;
 
@@ -189,7 +189,7 @@ class Pair extends Value {
   }
 }
 
-class RunInl extends Value {
+export class RunInl extends Value {
   private _enum: Value;
 
   constructor(enumValue: Value) {
@@ -206,7 +206,7 @@ class RunInl extends Value {
   }
 }
 
-class RunInr extends Value {
+export class RunInr extends Value {
   private _enum: Value;
 
   constructor(enumValue: Value) {
@@ -223,7 +223,7 @@ class RunInr extends Value {
   }
 }
 
-class RunPair extends Value {
+export class RunPair extends Value {
   private _fst: Value;
   private _snd: Value;
 
@@ -246,7 +246,7 @@ class RunPair extends Value {
   }
 }
 
-class Text extends Value {
+export class Text extends Value {
   private _value: string;
 
   constructor(value: string) {
@@ -263,7 +263,7 @@ class Text extends Value {
   }
 }
 
-class Prompt extends Value {
+export class Prompt extends Value {
   private _value: string;
 
   constructor(value: string) {
@@ -280,44 +280,44 @@ class Prompt extends Value {
   }
 }
 
-class Panic extends Error {
+export class Panic extends Error {
   constructor(message?: string) {
     super(message);
     this.name = "Panic";
   }
 }
 
-class NoMoreData extends Panic {
+export class NoMoreData extends Panic {
   constructor(public state: State) {
     super("No more data");
   }
 }
 
-class NoMoreCode extends Panic {
+export class NoMoreCode extends Panic {
   constructor(public state: State) {
     super("No more code");
   }
 }
 
-class NoSuchProperty extends Panic {
+export class NoSuchProperty extends Panic {
   constructor(public property: string, public value: Value) {
     super(`No such property: ${property}`);
   }
 }
 
-class Unreadable extends Panic {
+export class Unreadable extends Panic {
   constructor(public source: string, public message: string) {
     super(`Unreadable: ${message}`);
   }
 }
 
-class Unexpected extends Panic {
+export class Unexpected extends Panic {
   constructor(public expected: string, public actual: Value) {
     super(`Unexpected value`);
   }
 }
 
-class Unknown extends Panic {
+export class Unknown extends Panic {
   constructor(public value: Value, public state: State) {
     super("Unknown value");
   }
@@ -327,385 +327,421 @@ function _isSeparator(char: string): boolean {
   return /\s|[\[\]]/.test(char);
 }
 
-export class Interpreter {
-  dictionary: Map<string, Value>;
+export function id() {
+  return new Id();
+}
 
-  constructor() {
-    this.dictionary = new Map();
+export function constant(name: string): Constant {
+  return new Constant(name);
+}
+
+export function variable(name: string): Variable {
+  return new Variable(name);
+}
+
+export function quote(value: Value): Quote {
+  return new Quote(value);
+}
+
+export function inl(value: Value): Inl {
+  return new Inl(value);
+}
+
+export function inr(value: Value): Inr {
+  return new Inr(value);
+}
+
+export function unit() {
+  return new Unit();
+}
+
+export function pair(fst: Value, snd: Value): Pair {
+  return new Pair(fst, snd);
+}
+
+export function text(value: string): Text {
+  return new Text(value);
+}
+
+export function prompt(value: string): Prompt {
+  return new Prompt(value);
+}
+
+export function catenate(...values: Value[]): Value {
+  const buf: Value[] = [];
+  for (const value of values) {
+    if (value instanceof Id) {
+      continue;
+    } else if (value instanceof Catenate) {
+      buf.push(...value.children);
+    } else {
+      buf.push(value);
+    }
   }
-
-  get id(): Id {
+  if (buf.length === 0) {
     return new Id();
   }
+  return new Catenate(buf);
+}
 
-  get unit(): Unit {
-    return new Unit();
+export function read(src: string): Value {
+  let build: Value[] = [];
+  let stack: Value[][] = [];
+  let index = 0;
+  while (index < src.length) {
+    if (/\s/.test(src[index])) {
+      while (index < src.length && /\s/.test(src[index])) {
+        index++;
+      }
+    } else if (src[index] === "[") {
+      stack.push(build);
+      build = [];
+      index++;
+    } else if (src[index] === "]") {
+      if (stack.length === 0) {
+        throw new Unreadable(src, "Unbalanced brackets");
+      }
+      let body = catenate(...build);
+      let value;
+      if (body instanceof Id) {
+        value = unit();
+      } else {
+        value = quote(body);
+      }
+      build = stack.pop()!;
+      build.push(value);
+      index++;
+    } else if (src[index] === '"') {
+      index++;
+      const start = index;
+      while (index < src.length && src[index] !== '"') {
+        index++;
+      }
+      if (index >= src.length) {
+        throw new Unreadable(src, "Unbalanced quotes");
+      }
+      build.push(text(src.slice(start, index)));
+      index++;
+    } else if (src[index] === "{") {
+      index++;
+      const start = index;
+      while (index < src.length && src[index] !== "}") {
+        index++;
+      }
+      if (index >= src.length) {
+        throw new Unreadable(src, "Unbalanced braces");
+      }
+      build.push(prompt(src.slice(start, index)));
+      index++;
+    } else if (/[A-Z]/.test(src[index])) {
+      const start = index++;
+      while (
+        index < src.length && !_isSeparator(src[index])) {
+        index++;
+      }
+      const name = src.slice(start, index);
+      if (!/^[A-Z][\w-]*$/.test(name)) {
+        throw new Unreadable(
+          src, `Unknown symbol: ${name}`);
+      }
+      build.push(constant(name));
+    } else {
+      const start = index++;
+      while (
+        index < src.length && !_isSeparator(src[index])) {
+        index++;
+      }
+      const name = src.slice(start, index);
+      if (!/^[a-z][\w-]*$/.test(name)) {
+        throw new Unreadable(
+          src, `Unknown symbol: ${name}`);
+      }
+      build.push(variable(name));
+    }
   }
-
-  constant(name: string): Constant {
-    return new Constant(name);
+  if (stack.length > 0) {
+    throw new Unreadable(src, "Unbalanced brackets");
   }
+  return catenate(...build);
+}
 
-  variable(name: string): Variable {
-    return new Variable(name);
+export function evaluate(
+  init: string | Value,
+  dictionary?: Map<string, Value>,
+  gas: number = 1_000_000,
+): Value {
+  if (typeof(init) === 'string') {
+    init = read(init);
   }
-
-  quote(value: Value): Quote {
-    return new Quote(value);
-  }
-
-  pair(fst: Value, snd: Value): Pair {
-    return new Pair(fst, snd);
-  }
-
-  inl(body: Value): Inl {
-    return new Inl(body);
-  }
-
-  inr(body: Value): Inr {
-    return new Inr(body);
-  }
-
-  text(value: string): Text {
-    return new Text(value);
-  }
-
-  prompt(value: string): Prompt {
-    return new Prompt(value);
-  }
-
-  catenate(...values: Value[]): Value {
-    const buf: Value[] = [];
-    for (const value of values) {
-      if (value instanceof Id) {
+  let state = new State(init);
+  while (state.code.length > 0 && gas > 0) {
+    gas--;
+    const hand = state.getCode(0);
+    if (hand instanceof Catenate) {
+      state.popCode();
+      state.pushCode(hand.children);
+    } else if (hand instanceof Variable) {
+      if (!dictionary || !dictionary.has(hand.name)) {
+        state.thunk();
+        gas = 0;
         continue;
-      } else if (value instanceof Catenate) {
-        buf.push(...value.children);
-      } else {
-        buf.push(value);
       }
-    }
-    return buf.length === 0 ? new Id() : new Catenate(buf);
-  }
-
-  read(src: string): Value {
-    let build: Value[] = [];
-    let stack: Value[][] = [];
-    let index = 0;
-
-    while (index < src.length) {
-      if (/\s/.test(src[index])) {
-        while (index < src.length && /\s/.test(src[index])) {
-          index++;
-        }
-      } else if (src[index] === "[") {
-        stack.push(build);
-        build = [];
-        index++;
-      } else if (src[index] === "]") {
-        if (stack.length === 0) {
-          throw new Unreadable(src, "Unbalanced brackets");
-        }
-        let body = this.catenate(...build);
-        let value;
-        if (body instanceof Id) {
-          value = this.unit;
-        } else {
-          value = this.quote(body);
-        }
-        build = stack.pop()!;
-        build.push(value);
-        index++;
-      } else if (src[index] === '"') {
-        index++;
-        const start = index;
-        while (index < src.length && src[index] !== '"') {
-          index++;
-        }
-        if (index >= src.length) {
-          throw new Unreadable(src, "Unbalanced quotes");
-        }
-        build.push(this.text(src.slice(start, index)));
-        index++;
-      } else if (src[index] === "{") {
-        index++;
-        const start = index;
-        while (index < src.length && src[index] !== "}") {
-          index++;
-        }
-        if (index >= src.length) {
-          throw new Unreadable(src, "Unbalanced braces");
-        }
-        build.push(this.prompt(src.slice(start, index)));
-        index++;
-      } else if (/[A-Z]/.test(src[index])) {
-        const start = index++;
-        while (
-          index < src.length && !_isSeparator(src[index])) {
-          index++;
-        }
-        const name = src.slice(start, index);
-        if (!/^[A-Z][\w-]*$/.test(name)) {
-          throw new Unreadable(
-            src, `Unknown symbol: ${name}`);
-        }
-        build.push(this.constant(name));
-      } else {
-        const start = index++;
-        while (
-          index < src.length && !_isSeparator(src[index])) {
-          index++;
-        }
-        const name = src.slice(start, index);
-        if (!/^[a-z][\w-]*$/.test(name)) {
-          throw new Unreadable(
-            src, `Unknown symbol: ${name}`);
-        }
-        build.push(this.variable(name));
-      }
-    }
-
-    if (stack.length > 0) {
-      throw new Unreadable(src, "Unbalanced brackets");
-    }
-    return this.catenate(...build);
-  }
-
-  rewrite(
-    init: string | Value,
-    gas: number = 1_000_000,
-  ): Value {
-    if (typeof(init) === 'string') {
-      init = this.read(init);
-    }
-    let state = new State(init);
-    while (state.code.length > 0 && gas > 0) {
-      gas--;
-      const hand = state.getCode(0);
-      if (hand instanceof Catenate) {
-        state.popCode();
-        state.pushCode(hand.children);
-      } else if (hand instanceof Variable) {
-        if (!this.dictionary.has(hand.name)) {
+      const binding = dictionary.get(hand.name)!;
+      state.popCode();
+      state.pushCode(binding);
+    } else if (hand instanceof Quote || hand instanceof Inl || hand instanceof Inr || hand instanceof Pair || hand instanceof Unit || hand instanceof Text) {
+      state.popCode();
+      state.pushData(hand);
+    } else if (hand instanceof Prompt) {
+      state.thunk();
+      gas = 0;
+      continue;
+    } else if (hand instanceof RunInl) {
+      let inl;
+      let inr;
+      try {
+        inl = state.getData(1).body;
+        inr = state.getData(0).body;
+      } catch (err) {
+        if (err instanceof Panic) {
           state.thunk();
           gas = 0;
           continue;
         }
-        const binding = this.dictionary.get(hand.name)!;
-        state.popCode();
-        state.pushCode(binding);
-      } else if (hand instanceof Quote || hand instanceof Inl || hand instanceof Inr || hand instanceof Pair || hand instanceof Unit || hand instanceof Text) {
-        state.popCode();
-        state.pushData(hand);
-      } else if (hand instanceof Prompt) {
-        state.thunk();
-        gas = 0;
-        continue;
-      } else if (hand instanceof RunInl) {
-        let inl;
-        let inr;
-        try {
-          inl = state.getData(1).body;
-          inr = state.getData(0).body;
-        } catch (err) {
-          if (err instanceof Panic) {
-            state.thunk();
-            gas = 0;
-            continue;
-          }
-          throw err;
-        }
-        state.popCode();
-        state.popData(2);
-        state.pushCode(inl);
-        state.pushData(hand.enum);
-      } else if (hand instanceof RunInr) {
-        let inl;
-        let inr;
-        try {
-          inl = state.getData(1).body;
-          inr = state.getData(0).body;
-        } catch (err) {
-          if (err instanceof Panic) {
-            state.thunk();
-            gas = 0;
-            continue;
-          }
-          throw err;
-        }
-        state.popCode();
-        state.popData(2);
-        state.pushCode(inr);
-        state.pushData(hand.enum);
-      } else if (hand instanceof RunPair) {
-        state.popCode();
-        state.pushData(hand.fst);
-        state.pushData(hand.snd);
-      } else if (hand instanceof Constant) {
-        switch (hand.name) {
-          case "B":
-            var value;
-            try {
-              value = state.getData(0);
-            } catch (err) {
-              if (err instanceof Panic) {
-                state.thunk();
-                continue;
-              }
-              throw err;
-            }
-            state.popCode();
-            state.pushData(value);
-            break;
-          case "C":
-            var value;
-            try {
-              value = state.getData(0);
-            } catch (err) {
-              if (err instanceof Panic) {
-                state.thunk();
-                continue;
-              }
-              throw err;
-            }
-            state.popCode();
-            state.popData();
-            break;
-          case "D":
-            var fst;
-            var snd;
-            try {
-              fst = state.getData(0);
-              snd = state.getData(1);
-            } catch (err) {
-              if (err instanceof Panic) {
-                state.thunk();
-                continue;
-              }
-              throw err;
-            }
-            state.popCode();
-            state.popData(2);
-            state.pushData(fst);
-            state.pushData(snd);
-            break;
-          case "F":
-            var lhs;
-            var rhs;
-            try {
-              lhs = state.getData(1).body;
-              rhs = state.getData(0).body;
-            } catch (err) {
-              if (err instanceof Panic) {
-                state.thunk();
-                continue;
-              }
-              throw err;
-            }
-            state.popCode();
-            state.popData(2);
-            state.pushCode(
-              this.quote(this.catenate(lhs, rhs)));
-            break;
-          case "G":
-            var value;
-            try {
-              value = state.getData(0);
-            } catch (err) {
-              if (err instanceof Panic) {
-                state.thunk();
-                continue;
-              }
-              throw err;
-            }
-            state.popCode();
-            state.popData();
-            state.pushData(this.quote(value));
-            break;
-          case "H":
-            var body;
-            try {
-              body = state.getData(0).body;
-            } catch (err) {
-              if (err instanceof Panic) {
-                state.thunk();
-                gas = 0;
-                continue;
-              }
-              throw err;
-            }
-            state.popCode();
-            state.popData();
-            state.pushCode(body);
-            break;
-          case "J":
-            var value;
-            try {
-              value = state.getData(0);
-            } catch (err) {
-              if (err instanceof Panic) {
-                state.thunk();
-                continue;
-              }
-              throw err;
-            }
-            state.popCode();
-            state.popData();
-            state.pushData(this.inl(value));
-            break;
-          case "K":
-            var value;
-            try {
-              value = state.getData(0);
-            } catch (err) {
-              if (err instanceof Panic) {
-                state.thunk();
-                continue;
-              }
-              throw err;
-            }
-            state.popCode();
-            state.popData();
-            state.pushData(this.inr(value));
-            break;
-          case "L":
-            var fst;
-            var snd;
-            try {
-              fst = state.getData(1);
-              snd = state.getData(0);
-            } catch (err) {
-              if (err instanceof Panic) {
-                state.thunk();
-                continue;
-              }
-              throw err;
-            }
-            state.popCode();
-            state.popData(2);
-            state.pushData(this.pair(fst, snd));
-            break;
-          case "M":
-            break;
-          case "N":
-            state.thunk();
-            gas = 0;
-            break;
-        }
-      } else {
-        throw new Unknown(hand, state);
+        throw err;
       }
+      state.popCode();
+      state.popData(2);
+      state.pushCode(inl);
+      state.pushData(hand.enum);
+    } else if (hand instanceof RunInr) {
+      let inl;
+      let inr;
+      try {
+        inl = state.getData(1).body;
+        inr = state.getData(0).body;
+      } catch (err) {
+        if (err instanceof Panic) {
+          state.thunk();
+          gas = 0;
+          continue;
+        }
+        throw err;
+      }
+      state.popCode();
+      state.popData(2);
+      state.pushCode(inr);
+      state.pushData(hand.enum);
+    } else if (hand instanceof RunPair) {
+      state.popCode();
+      state.pushData(hand.fst);
+      state.pushData(hand.snd);
+    } else if (hand instanceof Constant) {
+      switch (hand.name) {
+        case "B":
+          var value;
+          try {
+            value = state.getData(0);
+          } catch (err) {
+            if (err instanceof Panic) {
+              state.thunk();
+              continue;
+            }
+            throw err;
+          }
+          state.popCode();
+          state.pushData(value);
+          break;
+        case "C":
+          var value;
+          try {
+            value = state.getData(0);
+          } catch (err) {
+            if (err instanceof Panic) {
+              state.thunk();
+              continue;
+            }
+            throw err;
+          }
+          state.popCode();
+          state.popData();
+          break;
+        case "D":
+          var fst;
+          var snd;
+          try {
+            fst = state.getData(0);
+            snd = state.getData(1);
+          } catch (err) {
+            if (err instanceof Panic) {
+              state.thunk();
+              continue;
+            }
+            throw err;
+          }
+          state.popCode();
+          state.popData(2);
+          state.pushData(fst);
+          state.pushData(snd);
+          break;
+        case "F":
+          var lhs;
+          var rhs;
+          try {
+            lhs = state.getData(1).body;
+            rhs = state.getData(0).body;
+          } catch (err) {
+            if (err instanceof Panic) {
+              state.thunk();
+              continue;
+            }
+            throw err;
+          }
+          state.popCode();
+          state.popData(2);
+          state.pushCode(quote(catenate(lhs, rhs)));
+          break;
+        case "G":
+          var value;
+          try {
+            value = state.getData(0);
+          } catch (err) {
+            if (err instanceof Panic) {
+              state.thunk();
+              continue;
+            }
+            throw err;
+          }
+          state.popCode();
+          state.popData();
+          state.pushData(quote(value));
+          break;
+        case "H":
+          var body;
+          try {
+            body = state.getData(0).body;
+          } catch (err) {
+            if (err instanceof Panic) {
+              state.thunk();
+              gas = 0;
+              continue;
+            }
+            throw err;
+          }
+          state.popCode();
+          state.popData();
+          state.pushCode(body);
+          break;
+        case "J":
+          var value;
+          try {
+            value = state.getData(0);
+          } catch (err) {
+            if (err instanceof Panic) {
+              state.thunk();
+              continue;
+            }
+            throw err;
+          }
+          state.popCode();
+          state.popData();
+          state.pushData(inl(value));
+          break;
+        case "K":
+          var value;
+          try {
+            value = state.getData(0);
+          } catch (err) {
+            if (err instanceof Panic) {
+              state.thunk();
+              continue;
+            }
+            throw err;
+          }
+          state.popCode();
+          state.popData();
+          state.pushData(inr(value));
+          break;
+        case "L":
+          var fst;
+          var snd;
+          try {
+            fst = state.getData(1);
+            snd = state.getData(0);
+          } catch (err) {
+            if (err instanceof Panic) {
+              state.thunk();
+              continue;
+            }
+            throw err;
+          }
+          state.popCode();
+          state.popData(2);
+          state.pushData(pair(fst, snd));
+          break;
+        case "M":
+          break;
+        case "N":
+          state.thunk();
+          gas = 0;
+          break;
+        case "Define":
+          if (dictionary == null) {
+            state.thunk();
+            gas = 0;
+            continue;
+          }
+          var name;
+          var body;
+          try {
+            name = state.getData(0).text;
+            body = state.getData(1).body;
+          } catch(err) {
+            if (err instanceof Panic) {
+              state.thunk();
+              gas = 0;
+              continue;
+            }
+            throw err;
+          }
+          state.popCode();
+          state.popData(2);
+          dictionary!.set(name, body);
+          break;
+        case "Delete":
+          if (dictionary == null) {
+            state.thunk();
+            gas = 0;
+            continue;
+          }
+          var name;
+          try {
+            name = state.getData(0).text;
+          } catch(err) {
+            if (err instanceof Panic) {
+              state.thunk();
+              gas = 0;
+              continue;
+            }
+            throw err;
+          }
+          state.popCode();
+          state.popData();
+          dictionary!.delete(name);
+          break;
+      }
+    } else {
+      throw new Unknown(hand, state);
     }
-
-    return this.catenate(
-      ...state.sink,
-      ...state.data,
-      ...state.code.toReversed(),
-    );
   }
+  return catenate(
+    ...state.sink,
+    ...state.data,
+    ...state.code.toReversed(),
+  );
 }
 
-class State {
+export class State {
   code: Value[];
   data: Value[];
   sink: Value[];

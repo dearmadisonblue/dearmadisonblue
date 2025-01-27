@@ -1,14 +1,24 @@
 // worker.ts
 import * as script from "./script.ts";
 
-let interpreter = new script.Interpreter();
+let dictionary = new Map();
 
-self.onmessage = async (e: MessageEvent) => {
+self.onmessage = async (event: MessageEvent) => {
+  let { id, code } = event.data;
   try {
-    const parsed = interpreter.read(e.data);
-    const result = interpreter.rewrite(parsed);
-    self.postMessage(result.toString());
-  } catch (error) {
-    self.postMessage(`Error: ${error.message}`);
+    let parsed = script.read(code);
+    let result = script.evaluate(parsed, dictionary).toString();
+    self.postMessage({ id, result });
+  } catch (panic) {
+    let error = `
+While evaluating the expression:
+
+${code}
+
+The following error occurred:
+
+${panic}
+`.trim();
+    self.postMessage({ id, error });
   }
 };

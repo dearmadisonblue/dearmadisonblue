@@ -19,9 +19,8 @@ const testCases = [
 
 testCases.forEach(({ source, expected }, index) => {
   Deno.test(`Test case #${index + 1}: ${source} → ${expected}`, () => {
-    const interpreter = new script.Interpreter();
-    const parsed = interpreter.read(source);
-    const actual = interpreter.rewrite(parsed);
+    const parsed = script.read(source);
+    const actual = script.evaluate(parsed);
     assertEquals(actual.toString(), expected);
   });
 });
