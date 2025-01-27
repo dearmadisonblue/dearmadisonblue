@@ -4,6 +4,8 @@ import {
   serve,
 } from "https://deno.land/std@0.190.0/http/mod.ts";
 
+import * as script from "./script.ts";
+
 interface PromiseLike {
   resolve: (value) => void;
   reject: (reason) => void;
@@ -38,20 +40,29 @@ class Client {
     this.worker.onerror = this.onWorkerError.bind(this);
   }
 
+  async listen() {
+    while (true) {
+      let source = await this.read();
+      if (/^{\s*Quit\s*}/.test(source)) {
+        this.send('Bye');
+        return this.close();
+      }
+      let target = await this.evaluate(source);
+      this.send(target);
+    }
+  }
+
   async read(returnType='string'): string {
     if (this.isSocketClosed) {
       throw new Error('WebSocket is closed');
     }
     if (this.readQueue.length > 0) {
-      console.log('read: returning a message from the queue');
       return this.readQueue.shift();
     }
-    console.log('read: no messages, returning a promise');
     return new Promise((resolve, reject) => {
       this.pendingRead = {
         reject,
         resolve: (source) => {
-          console.log(`read: resolving message with ${source}`);
           switch (returnType) {
             case 'string':
               resolve(source);
@@ -59,7 +70,6 @@ class Client {
             case 'value':
               try {
                 let value = script.read(source);
-                console.log(`read: got the value ${value}`);
                 resolve(value);
               } catch(error) {
                 reject(error);
@@ -103,7 +113,6 @@ class Client {
 
   onWorkerMessage(event) {
     const { id, result, error } = event.data;
-    console.log(`Worker message: ${id} ${result} ${error}`);
     if (this.pendingEval.has(id)) {
       const { resolve, reject } = this.pendingEval.get(id);
       this.pendingEval.delete(id);
@@ -125,28 +134,16 @@ class Client {
   }
 }
 
-async function listen(client) {
-  console.log('Listening to a new client');
-  while (true) {
-    let source = await client.read();
-    console.log(`Got source code: ${source}`);
-    if (source.trim() in ['{Quit}','{ Quit }']) {
-      return client.close();
-    }
-    let target = await client.evaluate(source);
-    console.log(`Evaluated to ${target}`);
-    client.send(target);
+export class Server {
+  listen(port: number = 8080) {
+    serve((request: Request): Response => {
+      if (request.headers.get("upgrade") !== "websocket") {
+        return new Response("No", { status: 400 });
+      }
+      const { socket, response } = Deno.upgradeWebSocket(request);
+      let client = new Client(socket);
+      client.listen(client);
+      return response;
+    }, { port });
   }
 }
-
-const port = 8080;
-console.log(`Listening on ${port}`);
-serve((request: Request): Response => {
-  if (request.headers.get("upgrade") !== "websocket") {
-    return new Response("No", { status: 400 });
-  }
-  const { socket, response } = Deno.upgradeWebSocket(request);
-  let client = new Client(socket);
-  listen(client);
-  return response;
-}, { port });

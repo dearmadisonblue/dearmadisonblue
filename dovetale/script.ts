@@ -299,6 +299,12 @@ export class NoMoreCode extends Panic {
   }
 }
 
+export class NoShift extends Panic {
+  constructor(public state: State) {
+    super("No shift");
+  }
+}
+
 export class NoSuchProperty extends Panic {
   constructor(public property: string, public value: Value) {
     super(`No such property: ${property}`);
@@ -538,7 +544,7 @@ export function evaluate(
       state.pushData(hand.snd);
     } else if (hand instanceof Constant) {
       switch (hand.name) {
-        case "B":
+        case "Copy":
           var value;
           try {
             value = state.getData(0);
@@ -552,7 +558,7 @@ export function evaluate(
           state.popCode();
           state.pushData(value);
           break;
-        case "C":
+        case "Drop":
           var value;
           try {
             value = state.getData(0);
@@ -566,7 +572,7 @@ export function evaluate(
           state.popCode();
           state.popData();
           break;
-        case "D":
+        case "Swap":
           var fst;
           var snd;
           try {
@@ -584,7 +590,7 @@ export function evaluate(
           state.pushData(fst);
           state.pushData(snd);
           break;
-        case "F":
+        case "Cat":
           var lhs;
           var rhs;
           try {
@@ -601,7 +607,7 @@ export function evaluate(
           state.popData(2);
           state.pushCode(quote(catenate(lhs, rhs)));
           break;
-        case "G":
+        case "Abs":
           var value;
           try {
             value = state.getData(0);
@@ -616,7 +622,7 @@ export function evaluate(
           state.popData();
           state.pushData(quote(value));
           break;
-        case "H":
+        case "App":
           var body;
           try {
             body = state.getData(0).body;
@@ -632,7 +638,7 @@ export function evaluate(
           state.popData();
           state.pushCode(body);
           break;
-        case "J":
+        case "Inl":
           var value;
           try {
             value = state.getData(0);
@@ -647,7 +653,7 @@ export function evaluate(
           state.popData();
           state.pushData(inl(value));
           break;
-        case "K":
+        case "Inr":
           var value;
           try {
             value = state.getData(0);
@@ -662,7 +668,7 @@ export function evaluate(
           state.popData();
           state.pushData(inr(value));
           break;
-        case "L":
+        case "Pair":
           var fst;
           var snd;
           try {
@@ -679,9 +685,42 @@ export function evaluate(
           state.popData(2);
           state.pushData(pair(fst, snd));
           break;
-        case "M":
+        case "Shift":
+          var buf = [];
+          try {
+            let handler = state.getData(0).body;
+            let index = 1;
+            while (index < state.numCode) {
+              let code = state.getCode(index);
+              if (code instanceof Constant) {
+                if (code.name === 'Reset') {
+                  break;
+                } else {
+                  buf.push(code);
+                }
+              } else {
+                buf.push(code);
+              }
+              index++;
+            }
+            if (index >= state.numCode) {
+              throw new NoShift(state);
+            }
+            let continuation = quote(catenate(...buf));
+            state.popCode(index+1);
+            state.popData();
+            state.pushData(continuation);
+            state.pushCode(handler);
+          } catch(err) {
+            if (err instanceof Panic) {
+              state.thunk();
+              gas = 0;
+              continue;
+            }
+            throw err;
+          }
           break;
-        case "N":
+        case "Reset":
           state.thunk();
           gas = 0;
           break;
@@ -778,6 +817,10 @@ export class State {
     }
   }
 
+  get numCode(): number {
+    return this.code.length;
+  }
+
   getCode(index: number): Value {
     if (index >= this.code.length) {
       throw new NoMoreCode(this);
@@ -785,11 +828,11 @@ export class State {
     return this.code[this.code.length - 1 - index];
   }
 
-  popCode(): void {
-    if (this.code.length === 0) {
+  popCode(length: number = 1): void {
+    if (length > this.code.length) {
       throw new NoMoreCode(this);
     }
-    this.code.pop();
+    this.code.splice(-length, length);
   }
 
   pushCode(value: Value | Value[]): void {
