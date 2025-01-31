@@ -144,8 +144,37 @@ def evaluate(state: Combinator) -> Combinator:
                 thunk()
                 continue
           case 'jmp':
-            thunk()
-            continue
+            if len(data) == 0:
+              thunk()
+              continue
+            buf = []
+            handler = data[-1]
+            match handler:
+              case Quote(body):
+                index = 1
+                while index < len(code):
+                  point = code[-index]
+                  match point:
+                    case Basic(name):
+                      match name:
+                        case 'env':
+                          break
+                        case _:
+                          buf.append(point)
+                    case _:
+                      buf.append(point)
+                  index += 1
+                if index > len(code):
+                  thunk()
+                  continue
+                continuation = Quote(Catenate(buf))
+                code = code[:-index-1]
+                data.pop()
+                data.append(continuation)
+                code.append(body)
+              case _:
+                thunk()
+                continue
           case 'env':
             thunk()
             continue
@@ -169,7 +198,7 @@ import pytest
     ('[foo] [bar] cat', '[foo bar]'),
     ('[foo] abs', '[[foo]]'),
     ('[foo] app', 'foo'),
-    # ('[foo] jmp bar env', '[bar] foo'),
+    ('[foo] jmp bar qux env', '[bar qux] foo'),
   ],
 )
 def test_evaluate(source, expected):
