@@ -1,4 +1,4 @@
-💮 ———
+🐦 ———
 
 Thinking of a command and control for LLMs: the idea is that an LLM
 *always* writes Forth-like code to a socket to execute on the server
@@ -6,6 +6,34 @@ within a per-client dictionary, and the server always responds in
 natural language; even when the LLM wants to talk to people it uses
 Forth commands that mimic Twitter or IRC, which lets it communicate
 values as well as text.
+
+---
+
+Both AIXI and computability logic use the concept of a computer
+playing against an environment; while AIXI assumes the environment is
+Turing-computable, computability logic allows the environment to be
+arbitrary. Since "Turing-computable" means "first order computable"
+it's a little strange to assume that the environment is
+Turing-computable.
+
+[From "The philosophy of computability logic":](http://www.csc.villanova.edu/~japaridz/CL/1.html):
+
+> It is natural to require that the interaction strategies of the party
+> that we have referred to as an “agent” be limited to algorithmic ones,
+> allowing us to henceforth call that player a machine.  This is a
+> minimum condition that any non-esoteric game semantics would have to
+> satisfy. On the other hand, no restrictions can or should be imposed
+> on the environment, who represents a capricious user, the blind forces
+> of nature, or the devil himself. Algorithmic activities being
+> synonymous to computations, games thus represent computational
+> problems --- interactive tasks performed by computing agents, with
+> computability meaning winnability, i.e. existence of a machine that
+> wins the game against any possible (behavior of the) environment.
+
+---
+
+Geometric algebra + computability logic + interaction nets for deep
+learning.
 
 📖 ———
 

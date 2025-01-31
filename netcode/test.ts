@@ -1,6 +1,6 @@
 // script_test.ts
 
-import * as script from "./script.ts";
+import * as netcode from "../netcode.ts";
 import { assertEquals } from "https://deno.land/std@0.190.0/testing/asserts.ts";
 
 const testCases = [
@@ -10,9 +10,9 @@ const testCases = [
   { source: '[foo] [bar] Cat', expected: '[foo bar]' },
   { source: '[foo] Abs', expected: '[[foo]]' },
   { source: '[foo] App', expected: 'foo' },
-  { source: '[inl] [inr] [value] Inl App', expected: '[value] inl' },
-  { source: '[inl] [inr] [value] Inr App', expected: '[value] inr' },
-  { source: '[fst] [snd] Pair App', expected: '[fst] [snd]' },
+  { source: '[inl] [inr] [value] Inl', expected: '[value] inl' },
+  { source: '[inl] [inr] [value] Inr', expected: '[value] inr' },
+  { source: '[fst] [snd] Pair', expected: '[[fst] [snd]]' },
   { source: '"Hello" "world" Swap', expected: '"world" "Hello"' },
   { source: '{ Hello, world. }', expected: '{ Hello, world. }' },
   { source: '[handler] Shift body0 body1 body2 Reset', expected: '[body0 body1 body2] handler' },
@@ -20,8 +20,8 @@ const testCases = [
 
 testCases.forEach(({ source, expected }, index) => {
   Deno.test(`Test case #${index + 1}: ${source} → ${expected}`, () => {
-    const parsed = script.read(source);
-    const actual = script.evaluate(parsed);
+    const parsed = netcode.read(source);
+    const actual = netcode.evaluate(parsed);
     assertEquals(actual.toString(), expected);
   });
 });

@@ -1,4 +1,27 @@
-// script.ts
+// An interpreter for a concatenative combinator language.
+//
+//            [a] Copy = [a] [a]
+//            [a] Drop =
+//        [a] [b] Swap = [b] [a]
+//         [a] [b] Cat = [a b]
+//             [a] Abs = [[a]]
+//             [a] App = a
+// [inl] [inr] [a] Inl = [a] inl
+// [inl] [inr] [a] Inr = [a] inr
+//    [fst] [snd] Pair = [[fst] [snd]]
+//   [a] Shift b Reset = [b] a
+//
+// There are also words like:
+//
+// [body] "name" Define
+// -- Add the word with the given name and body (unquoted) to the dictionary.
+//
+// "name" Delete
+// -- Delete the word "name" from the dictionary.
+
+import {
+  serve,
+} from "https://deno.land/std@0.190.0/http/mod.ts";
 
 export abstract class Value {
   get name(): string {
@@ -50,7 +73,7 @@ export class Constant extends Value {
     this._name = name;
   }
 
-  get name(): string {
+  override get name(): string {
     return this._name;
   }
 
@@ -67,7 +90,7 @@ export class Variable extends Value {
     this._name = name;
   }
 
-  get name(): string {
+  override get name(): string {
     return this._name;
   }
 
@@ -84,7 +107,7 @@ export class Catenate extends Value {
     this._children = children;
   }
 
-  get children(): Value[] {
+  override get children(): Value[] {
     return this._children;
   }
 
@@ -101,148 +124,12 @@ export class Quote extends Value {
     this._body = body;
   }
 
-  get body(): Value {
+  override get body(): Value {
     return this._body;
   }
 
   toString(): string {
     return `[${this._body}]`;
-  }
-}
-
-export class Inl extends Value {
-  private _enum: Value;
-
-  constructor(enumValue: Value) {
-    super();
-    this._enum = enumValue;
-  }
-
-  get enum(): Value {
-    return this._enum;
-  }
-
-  get body(): Value {
-    return new RunInl(this._enum);
-  }
-
-  toString(): string {
-    return `${this._enum} J`;
-  }
-}
-
-export class Inr extends Value {
-  private _enum: Value;
-
-  constructor(enumValue: Value) {
-    super();
-    this._enum = enumValue;
-  }
-
-  get enum(): Value {
-    return this._enum;
-  }
-
-  get body(): Value {
-    return new RunInr(this._enum);
-  }
-
-  toString(): string {
-    return `${this._enum} K`;
-  }
-}
-
-export class Unit extends Value {
-  get body(): Value {
-    return new Id();
-  }
-
-  toString(): string {
-    return "[]";
-  }
-}
-
-export class Pair extends Value {
-  private _fst: Value;
-  private _snd: Value;
-
-  constructor(fst: Value, snd: Value) {
-    super();
-    this._fst = fst;
-    this._snd = snd;
-  }
-
-  get fst(): Value {
-    return this._fst;
-  }
-
-  get snd(): Value {
-    return this._snd;
-  }
-
-  get body(): Value {
-    return new RunPair(this._fst, this._snd);
-  }
-
-  toString(): string {
-    return `${this._fst} ${this._snd} L`;
-  }
-}
-
-export class RunInl extends Value {
-  private _enum: Value;
-
-  constructor(enumValue: Value) {
-    super();
-    this._enum = enumValue;
-  }
-
-  get enum(): Value {
-    return this._enum;
-  }
-
-  toString(): string {
-    return `${this._enum} J H`;
-  }
-}
-
-export class RunInr extends Value {
-  private _enum: Value;
-
-  constructor(enumValue: Value) {
-    super();
-    this._enum = enumValue;
-  }
-
-  get enum(): Value {
-    return this._enum;
-  }
-
-  toString(): string {
-    return `${this._enum} K H`;
-  }
-}
-
-export class RunPair extends Value {
-  private _fst: Value;
-  private _snd: Value;
-
-  constructor(fst: Value, snd: Value) {
-    super();
-    this._fst = fst;
-    this._snd = snd;
-  }
-
-  get fst(): Value {
-    return this._fst;
-  }
-
-  get snd(): Value {
-    return this._snd;
-  }
-
-  toString(): string {
-    return `${this._fst} ${this._snd} L H`;
   }
 }
 
@@ -254,7 +141,7 @@ export class Text extends Value {
     this._value = value;
   }
 
-  get text(): string {
+  override get text(): string {
     return this._value;
   }
 
@@ -271,7 +158,7 @@ export class Prompt extends Value {
     this._value = value;
   }
 
-  get prompt(): string {
+  override get prompt(): string {
     return this._value;
   }
 
@@ -312,7 +199,7 @@ export class NoSuchProperty extends Panic {
 }
 
 export class Unreadable extends Panic {
-  constructor(public source: string, public message: string) {
+  constructor(public source: string, message: string) {
     super(`Unreadable: ${message}`);
   }
 }
@@ -347,22 +234,6 @@ export function variable(name: string): Variable {
 
 export function quote(value: Value): Quote {
   return new Quote(value);
-}
-
-export function inl(value: Value): Inl {
-  return new Inl(value);
-}
-
-export function inr(value: Value): Inr {
-  return new Inr(value);
-}
-
-export function unit() {
-  return new Unit();
-}
-
-export function pair(fst: Value, snd: Value): Pair {
-  return new Pair(fst, snd);
 }
 
 export function text(value: string): Text {
@@ -407,13 +278,7 @@ export function read(src: string): Value {
       if (stack.length === 0) {
         throw new Unreadable(src, "Unbalanced brackets");
       }
-      let body = catenate(...build);
-      let value;
-      if (body instanceof Id) {
-        value = unit();
-      } else {
-        value = quote(body);
-      }
+      let value = quote(catenate(...build));
       build = stack.pop()!;
       build.push(value);
       index++;
@@ -495,53 +360,14 @@ export function evaluate(
       const binding = dictionary.get(hand.name)!;
       state.popCode();
       state.pushCode(binding);
-    } else if (hand instanceof Quote || hand instanceof Inl || hand instanceof Inr || hand instanceof Pair || hand instanceof Unit || hand instanceof Text) {
+    } else if (
+      hand instanceof Quote || hand instanceof Text) {
       state.popCode();
       state.pushData(hand);
     } else if (hand instanceof Prompt) {
       state.thunk();
       gas = 0;
       continue;
-    } else if (hand instanceof RunInl) {
-      let inl;
-      let inr;
-      try {
-        inl = state.getData(1).body;
-        inr = state.getData(0).body;
-      } catch (err) {
-        if (err instanceof Panic) {
-          state.thunk();
-          gas = 0;
-          continue;
-        }
-        throw err;
-      }
-      state.popCode();
-      state.popData(2);
-      state.pushCode(inl);
-      state.pushData(hand.enum);
-    } else if (hand instanceof RunInr) {
-      let inl;
-      let inr;
-      try {
-        inl = state.getData(1).body;
-        inr = state.getData(0).body;
-      } catch (err) {
-        if (err instanceof Panic) {
-          state.thunk();
-          gas = 0;
-          continue;
-        }
-        throw err;
-      }
-      state.popCode();
-      state.popData(2);
-      state.pushCode(inr);
-      state.pushData(hand.enum);
-    } else if (hand instanceof RunPair) {
-      state.popCode();
-      state.pushData(hand.fst);
-      state.pushData(hand.snd);
     } else if (hand instanceof Constant) {
       switch (hand.name) {
         case "Copy":
@@ -640,33 +466,45 @@ export function evaluate(
           break;
         case "Inl":
           var value;
+          var inl;
+          var inr;
           try {
             value = state.getData(0);
+            inl = state.getData(2).body;
+            inr = state.getData(1).body;
           } catch (err) {
             if (err instanceof Panic) {
               state.thunk();
+              gas = 0;
               continue;
             }
             throw err;
           }
           state.popCode();
-          state.popData();
-          state.pushData(inl(value));
+          state.popData(3);
+          state.pushCode(inl);
+          state.pushData(value);
           break;
         case "Inr":
           var value;
+          var inl;
+          var inr;
           try {
             value = state.getData(0);
+            inl = state.getData(2).body;
+            inr = state.getData(1).body;
           } catch (err) {
             if (err instanceof Panic) {
               state.thunk();
+              gas = 0;
               continue;
             }
             throw err;
           }
           state.popCode();
-          state.popData();
-          state.pushData(inr(value));
+          state.popData(3);
+          state.pushCode(inr);
+          state.pushData(value);
           break;
         case "Pair":
           var fst;
@@ -683,7 +521,7 @@ export function evaluate(
           }
           state.popCode();
           state.popData(2);
-          state.pushData(pair(fst, snd));
+          state.pushData(quote(catenate(fst, snd)));
           break;
         case "Shift":
           var buf = [];
@@ -850,4 +688,153 @@ export class State {
       this.sink.push(this.code.pop()!);
     }
   }
+}
+
+interface PromiseLike {
+  resolve: (value) => void;
+  reject: (reason) => void;
+}
+
+function workerAddress() {
+  return new URL('./netcode/worker.ts', import.meta.url).href;
+}
+
+class Client {
+  // TODO: Replace these with the actual type names for Deno's web
+  // sockets and web workers.
+  socket: WebSocket;
+  worker: any;
+  readQueue: string[];
+  pendingRead: PromiseLike | null;
+  pendingEval: Map<int, PromiseLike>;
+  nextId: number = 0;
+  isSocketClosed: boolean;
+
+  constructor(socket) {
+    this.socket = socket;
+    this.worker = new Worker(workerAddress(), { type: 'module' });
+    this.readQueue = [];
+    this.pendingRead = null;
+    this.pendingEval = new Map();
+    this.isSocketClosed = false;
+    this.socket.onmessage = this.onSocketMessage.bind(this);
+    this.socket.onerror = this.onSocketError.bind(this);
+    this.socket.onclose = this.onSocketClose.bind(this);
+    this.worker.onmessage = this.onWorkerMessage.bind(this);
+    this.worker.onerror = this.onWorkerError.bind(this);
+  }
+
+  async listen() {
+    while (true) {
+      let source = await this.read();
+      if (/^{\s*Quit\s*}/.test(source)) {
+        this.send('Bye');
+        return this.close();
+      }
+      let target = await this.evaluate(source);
+      this.send(target);
+    }
+  }
+
+  async read(returnType='string'): string {
+    if (this.isSocketClosed) {
+      throw new Error('WebSocket is closed');
+    }
+    if (this.readQueue.length > 0) {
+      return this.readQueue.shift();
+    }
+    return new Promise((resolve, reject) => {
+      this.pendingRead = {
+        reject,
+        resolve: (source) => {
+          switch (returnType) {
+            case 'string':
+              resolve(source);
+              break;
+            case 'value':
+              try {
+                let value = read(source);
+                resolve(value);
+              } catch(error) {
+                reject(error);
+              }
+              break;
+            default:
+              break;
+          }
+        },
+      };
+    });
+  }
+
+  async evaluate(code: string): string {
+    let id = this.nextId++;
+    return new Promise((resolve, reject) => {
+      this.pendingEval.set(id, { resolve, reject });
+      this.worker.postMessage({ id, code });
+    });
+  }
+
+  send(message: string) {
+    this.socket.send(message || '{ Okay }');
+  }
+
+  close() {
+    this.socket.close();
+    this.worker.terminate();
+  }
+
+  onSocketMessage(event) {
+    let code = event.data.toString();
+    if (this.pendingRead) {
+      let { resolve, reject } = this.pendingRead;
+      this.pendingRead = null;
+      resolve(code);
+    } else {
+      this.readQueue.push(code);
+    }
+  }
+
+  onWorkerMessage(event) {
+    const { id, result, error } = event.data;
+    if (this.pendingEval.has(id)) {
+      const { resolve, reject } = this.pendingEval.get(id);
+      this.pendingEval.delete(id);
+      error? reject(error) : resolve(result);
+    }
+  }
+
+  onSocketError(error) {
+    this.worker.terminate();
+  }
+
+  onWorkerError(error) {
+    this.socket.close();
+    this.worker.terminate();
+  }
+
+  onSocketClose() {
+    this.worker.terminate();
+  }
+}
+
+export class Server {
+  listen(port: number = 8080) {
+    serve((request: Request): Response => {
+      if (request.headers.get("upgrade") !== "websocket") {
+        return new Response("No", { status: 400 });
+      }
+      const { socket, response } = Deno.upgradeWebSocket(request);
+      let client = new Client(socket);
+      client.listen(client);
+      return response;
+    }, { port });
+  }
+}
+
+if (import.meta.main) {
+  let server = new Server();
+  let port = 8080;
+  server.listen(port);
+
 }
